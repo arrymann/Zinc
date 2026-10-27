@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinc Authors <zinc@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 11:45:31 +0000
+Subject: [PATCH 4/6] Zinc: Put the address bar at the bottom by default
+
+Default both the Java toolbar position (AddressBarPreference) and the
+native local-state pref (omnibox.is_in_bottom_position) to bottom.
+fromLocalState() used the default for the "not at bottom" case, which
+would have turned an explicit "top" choice into bottom; map it to
+TOP_SETTINGS explicitly. Users can still move the bar to the top in
+Settings > Address bar or by long-pressing the toolbar.
+
+diff --git a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarPreference.java b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarPreference.java
+index 1f79e585..dba3ec9d 100644
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarPreference.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarPreference.java
+@@ -48,10 +48,10 @@ public class AddressBarPreference extends ContainedRadioButtonGroupPreference
+     private RadioButtonWithDescription mBottomButton;
+     private @HighlightedOption int mHighlightedOption;
+ 
+-    // We choose this as a "default return value" because top omnibox is the default today. Choose
+-    // TOP_SETTINGS because TOP_LONG_PRESS causes an animation (see ToolbarPositionController).
++    // Zinc: the address bar sits at the bottom until the user moves it. Choose BOTTOM_SETTINGS
++    // because BOTTOM_LONG_PRESS causes an animation (see ToolbarPositionController).
+     private static final @ToolbarPositionAndSource int DEFAULT_POSITION_AND_SOURCE =
+-            ToolbarPositionAndSource.TOP_SETTINGS;
++            ToolbarPositionAndSource.BOTTOM_SETTINGS;
+ 
+     public AddressBarPreference(Context context, AttributeSet attrs) {
+         super(context, attrs);
+@@ -256,6 +256,7 @@ public class AddressBarPreference extends ContainedRadioButtonGroupPreference
+ 
+     private static @ToolbarPositionAndSource int fromLocalState(boolean isInBottomPosition) {
+         if (isInBottomPosition) return ToolbarPositionAndSource.BOTTOM_SETTINGS;
+-        return DEFAULT_POSITION_AND_SOURCE;
++        // Zinc: an explicit "top" choice must not fall back to the (bottom) default.
++        return ToolbarPositionAndSource.TOP_SETTINGS;
+     }
+ }
+diff --git a/components/omnibox/browser/omnibox_prefs.cc b/components/omnibox/browser/omnibox_prefs.cc
+index c1a0240d..bccd190c 100644
+--- a/components/omnibox/browser/omnibox_prefs.cc
++++ b/components/omnibox/browser/omnibox_prefs.cc
+@@ -52,7 +52,9 @@ void RegisterProfilePrefs(PrefRegistrySimple* registry) {
+ }
+ 
+ void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
+-  registry->RegisterBooleanPref(kIsOmniboxInBottomPosition, false);
++  // Zinc: the address bar defaults to the bottom of the screen. Keep in sync
++  // with AddressBarPreference.DEFAULT_POSITION_AND_SOURCE.
++  registry->RegisterBooleanPref(kIsOmniboxInBottomPosition, true);
+   registry->RegisterIntegerPref(kIntranetRedirectBehavior, 0);
+ }
+ 

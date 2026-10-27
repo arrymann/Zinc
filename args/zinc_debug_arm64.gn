@@ -1,0 +1,24 @@
+# Copyright 2026 The Zinc Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Developer build of Zinc: fast incremental builds, DCHECKs and Java
+# asserts on, static analysis and warnings-as-errors on. Not for daily use.
+
+target_os = "android"
+target_cpu = "arm64"
+
+is_desktop_android = true
+
+chrome_public_manifest_package = "app.zinc.browser.dev"
+is_chrome_branded = false
+use_official_google_api_keys = false
+
+is_debug = false
+is_component_build = true
+dcheck_always_on = true
+symbol_level = 1
+
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+disable_fieldtrial_testing_config = true

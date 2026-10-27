@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinc Authors <zinc@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 11:45:29 +0000
+Subject: [PATCH 3/6] Zinc: Always request the Chrome Web Store's desktop site
+
+The Chrome Web Store only offers "Add to Chrome" to desktop browsers.
+Zinc runs desktop extensions, so request the desktop site for
+chromewebstore.google.com (and the legacy chrome.google.com/webstore)
+regardless of the user's desktop-site settings.
+
+diff --git a/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtils.java b/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtils.java
+index 028311d5..413c2358 100644
+--- a/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtils.java
++++ b/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtils.java
+@@ -221,6 +221,12 @@ public class DesktopSiteUtils {
+             return true;
+         }
+ 
++        // Zinc: the Chrome Web Store only offers "Add to Chrome" to desktop browsers. Zinc runs
++        // desktop extensions, so always request the store's desktop site.
++        if (isChromeWebStoreUrl(url)) {
++            return true;
++        }
++
+         // If domain/global setting is enabled and window setting should not
+         // apply, override the user agent.
+         if (readRequestDesktopSiteContentSettings(profile, url)
+@@ -236,6 +242,21 @@ public class DesktopSiteUtils {
+         return false;
+     }
+ 
++    /** Zinc: returns whether {@code url} belongs to the Chrome Web Store. */
++    static boolean isChromeWebStoreUrl(@Nullable GURL url) {
++        return url != null
++                && url.isValid()
++                && isChromeWebStoreUrl(url.getScheme(), url.getHost(), url.getPath());
++    }
++
++    /** Zinc: returns whether the URL made of these components belongs to the Chrome Web Store. */
++    @VisibleForTesting
++    static boolean isChromeWebStoreUrl(String scheme, String host, String path) {
++        if (!"https".equals(scheme)) return false;
++        return "chromewebstore.google.com".equals(host)
++                || ("chrome.google.com".equals(host) && path.startsWith("/webstore"));
++    }
++
+     /**
+      * Check if Request Desktop Site Content Setting is enabled.
+      *
+diff --git a/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtilsUnitTest.java b/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtilsUnitTest.java
+index 6c3b8ebe..a1fd4621 100644
+--- a/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtilsUnitTest.java
++++ b/chrome/browser/ui/android/desktop_site/java/src/org/chromium/chrome/browser/desktop_site/DesktopSiteUtilsUnitTest.java
+@@ -28,6 +28,7 @@ import org.junit.Rule;
+ import org.junit.Test;
+ import org.junit.runner.RunWith;
+ import org.mockito.Mock;
++import org.mockito.Mockito;
+ import org.mockito.junit.MockitoJUnit;
+ import org.mockito.junit.MockitoRule;
+ import org.robolectric.Robolectric;
+@@ -812,4 +813,36 @@ public class DesktopSiteUtilsUnitTest {
+             DesktopSiteUtils.sDesktopUAAllowedOnExternalDisplayForOem = TriState.NOT_SET;
+         }
+     }
++
++    @Test
++    public void testIsChromeWebStoreUrl() {
++        Assert.assertTrue(
++                DesktopSiteUtils.isChromeWebStoreUrl(
++                        "https", "chromewebstore.google.com", "/detail/abc"));
++        Assert.assertTrue(
++                DesktopSiteUtils.isChromeWebStoreUrl(
++                        "https", "chrome.google.com", "/webstore/category/extensions"));
++        Assert.assertFalse(DesktopSiteUtils.isChromeWebStoreUrl("https", "chrome.google.com", "/"));
++        Assert.assertFalse(
++                DesktopSiteUtils.isChromeWebStoreUrl(
++                        "http", "chromewebstore.google.com", "/detail/abc"));
++        Assert.assertFalse(
++                DesktopSiteUtils.isChromeWebStoreUrl(
++                        "https", "chromewebstore.google.com.evil.example", "/"));
++        Assert.assertFalse(DesktopSiteUtils.isChromeWebStoreUrl(null));
++    }
++
++    @Test
++    public void testShouldOverrideDesktopSite_ChromeWebStore() {
++        GURL webStoreUrl = Mockito.mock(GURL.class);
++        when(webStoreUrl.isValid()).thenReturn(true);
++        when(webStoreUrl.getScheme()).thenReturn("https");
++        when(webStoreUrl.getHost()).thenReturn("chromewebstore.google.com");
++        when(webStoreUrl.getPath()).thenReturn("/");
++
++        // The store's desktop site is requested regardless of the user's settings.
++        Assert.assertTrue(
++                DesktopSiteUtils.shouldOverrideDesktopSite(
++                        mProfile, webStoreUrl, ContextUtils.getApplicationContext()));
++    }
+ }

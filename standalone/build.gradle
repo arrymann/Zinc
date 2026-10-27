@@ -1,0 +1,57 @@
+// Builds and tests the pure-Java part of Zinc (the toolbar model) without a
+// Chromium checkout. The sources live in the overlay so there is exactly one
+// copy of them; only the build annotations are stubbed.
+
+plugins {
+    id 'java'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
+def coreDir = '../overlay/chrome/browser/ui/android/toolbar/java/src'
+def corePackage = 'org/chromium/chrome/browser/toolbar/zinc/core/'
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['stubs', coreDir]
+            include 'org/chromium/build/annotations/**'
+            include corePackage + '**'
+            exclude '**/*Test.java'
+        }
+    }
+    test {
+        java {
+            srcDirs = [coreDir]
+            include corePackage + '**/*Test.java'
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:all', '-Werror']
+}
+
+test {
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+    afterSuite { desc, result ->
+        if (!desc.parent) {
+            println "Zinc core tests: ${result.resultType} " +
+                    "(${result.testCount} run, ${result.failedTestCount} failed)"
+        }
+    }
+}

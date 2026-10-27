@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinc Authors <zinc@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 11:45:35 +0000
+Subject: [PATCH 6/6] Zinc: Add Settings > Toolbar
+
+Entry point for ZincToolbarSettingsFragment, which configures the number
+of toolbar buttons, the function of each button, which side of the
+address box it sits on, and the extensions button.
+
+diff --git a/chrome/android/java/res/xml/main_preferences.xml b/chrome/android/java/res/xml/main_preferences.xml
+index 67228cb0..2ce7328c 100644
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -40,6 +40,14 @@ found in the LICENSE file.
+         android:key="address_bar"
+         android:order="7"
+         android:title="@string/address_bar_settings"/>
++    <!-- Zinc: customizable toolbar buttons and pinned extensions. Sorted after
++         "Address bar" (same order, titles compared). -->
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:fragment="org.chromium.chrome.browser.toolbar.zinc.settings.ZincToolbarSettingsFragment"
++        android:key="zinc_toolbar"
++        android:order="7"
++        android:title="@string/zinc_settings_title"
++        android:summary="@string/zinc_settings_main_summary"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+         android:fragment="org.chromium.chrome.browser.privacy.settings.PrivacySettings"
+         android:key="privacy"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Zinc Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<resources>
+    <!-- The address box never shrinks below this to make room for pinned
+         extensions; extensions that do not fit go to the puzzle menu. -->
+    <dimen name="zinc_min_location_bar_width">144dp</dimen>
+    <dimen name="zinc_preview_slot_width">40dp</dimen>
+    <dimen name="zinc_preview_height">48dp</dimen>
+    <dimen name="zinc_preview_address_box_height">36dp</dimen>
+    <dimen name="zinc_preview_horizontal_padding">16dp</dimen>
+</resources>

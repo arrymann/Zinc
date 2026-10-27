@@ -1,0 +1,841 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinc Authors <zinc@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 11:45:33 +0000
+Subject: [PATCH 5/6] Zinc: Customizable phone toolbar with pinned extensions
+
+The phone toolbar gets up to four customizable buttons (see the overlay
+package org.chromium.chrome.browser.toolbar.zinc). Each button can be
+pinned to any basic browser function and placed left or right of the
+address box; the stock home, tab switcher and adaptive buttons are
+replaced by them.
+
+Extensions: upstream only hosts the extensions toolbar on ToolbarTablet.
+Add the extensions stub to toolbar_phone.xml between the end buttons and
+the app menu, let ToolbarManager create the ExtensionsToolbarCoordinator
+for any toolbar layout, and have ToolbarPhone give pinned extensions only
+the width the address box can spare (ZincToolbarWidthPlanner), so
+overflowing extensions stay in the puzzle menu. Pin/unpin and reordering
+use the upstream extensions menu, context menu and drag support.
+
+ToolbarPhone also draws the new views into the toolbar texture capture,
+hides them during URL focus with the other toolbar buttons, and keeps
+their tint and ripple in sync with incognito and theme changes.
+
+diff --git a/chrome/android/chrome_java_sources.gni b/chrome/android/chrome_java_sources.gni
+index 9943d245..f8578aaf 100644
+--- a/chrome/android/chrome_java_sources.gni
++++ b/chrome/android/chrome_java_sources.gni
+@@ -1287,6 +1287,7 @@ chrome_java_sources = [
+   "java/src/org/chromium/chrome/browser/toolbar/ToolbarButtonInProductHelpController.java",
+   "java/src/org/chromium/chrome/browser/toolbar/ToolbarIphController.java",
+   "java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java",
++  "java/src/org/chromium/chrome/browser/toolbar/zinc/ZincToolbarActionHandler.java",
+   "java/src/org/chromium/chrome/browser/touch_to_fill/autofill/TouchToFillAutofillViewBridge.java",
+   "java/src/org/chromium/chrome/browser/touch_to_fill/payments/TouchToFillPaymentMethodControllerBridge.java",
+   "java/src/org/chromium/chrome/browser/touch_to_fill/payments/TouchToFillPaymentMethodViewBridge.java",
+diff --git a/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java b/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
+index a6e265da..a2969292 100644
+--- a/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
++++ b/chrome/android/java/src/org/chromium/chrome/browser/toolbar/ToolbarManager.java
+@@ -220,6 +220,7 @@ import org.chromium.chrome.browser.toolbar.top.TopToolbarCoordinator;
+ import org.chromium.chrome.browser.toolbar.top.ViewShiftingActionBarDelegate;
+ import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator;
+ import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator.TabStripTransitionDelegate;
++import org.chromium.chrome.browser.toolbar.zinc.ZincToolbarActionHandler;
+ import org.chromium.chrome.browser.ui.actions.ActionId;
+ import org.chromium.chrome.browser.ui.actions.ActionProperties;
+ import org.chromium.chrome.browser.ui.actions.ActionRegistry;
+@@ -2782,7 +2783,7 @@ public class ToolbarManager
+                                                         mActivityTabProvider.asObservable(),
+                                                         mTabCreatorManager.getTabCreator(false),
+                                                         getBrowsingModeThemeColorProvider(),
+-                                                        (ToolbarTablet) mToolbarLayout,
++                                                        mToolbarLayout,
+                                                         contextMenuPopulatorFactory,
+                                                         selectionDropdownMenuDelegate,
+                                                         mTabModelSelector,
+@@ -2796,6 +2797,22 @@ public class ToolbarManager
+             }
+         }
+ 
++        // Zinc: make the customizable phone toolbar buttons interactive.
++        if (mToolbarLayout instanceof ToolbarPhone toolbarPhone) {
++            toolbarPhone
++                    .getZincButtonsCoordinator()
++                    .initializeWithNative(
++                            mActivityTabProvider.asObservable(),
++                            new ZincToolbarActionHandler(
++                                    mAppMenuDelegate,
++                                    mToolbarTabController,
++                                    openGridTabSwitcherHandler,
++                                    openGridTabSwitcherHandler == null
++                                            ? null
++                                            : createTabSwitcherLongClickListener(
++                                                    profile, openGridTabSwitcherHandler)));
++        }
++
+         // Must be initialized before Toolbar attempts to use it.
+         mLocationBarModel.initializeWithNative();
+         if (mTabSwitcherButtonCoordinator != null) {
+diff --git a/chrome/android/junit/BUILD.gn b/chrome/android/junit/BUILD.gn
+index e68eff9d..2f4f10e3 100644
+--- a/chrome/android/junit/BUILD.gn
++++ b/chrome/android/junit/BUILD.gn
+@@ -1609,6 +1609,7 @@ if (is_android) {
+       "src/org/chromium/chrome/browser/toolbar/ToolbarIphControllerUnitTest.java",
+       "src/org/chromium/chrome/browser/toolbar/ToolbarTabControllerImplTest.java",
+       "src/org/chromium/chrome/browser/toolbar/adaptive/OptionalNewTabButtonControllerActivityTest.java",
++      "src/org/chromium/chrome/browser/toolbar/zinc/ZincToolbarActionHandlerUnitTest.java",
+     ]
+ 
+     deps = [
+diff --git a/chrome/browser/preferences/android/java/src/org/chromium/chrome/browser/preferences/ChromePreferenceKeys.java b/chrome/browser/preferences/android/java/src/org/chromium/chrome/browser/preferences/ChromePreferenceKeys.java
+index 6c0d1e79..5c77b8be 100644
+--- a/chrome/browser/preferences/android/java/src/org/chromium/chrome/browser/preferences/ChromePreferenceKeys.java
++++ b/chrome/browser/preferences/android/java/src/org/chromium/chrome/browser/preferences/ChromePreferenceKeys.java
+@@ -1126,6 +1126,9 @@ public final class ChromePreferenceKeys {
+     public static final String WINDOW_CONTROLS_OVERLAY_ENABLED_PACKAGES =
+             "Chrome.WindowControlsOverlay.EnabledPackages";
+ 
++    /** Zinc: the layout of the customizable toolbar buttons, see ZincToolbarConfig. */
++    public static final String ZINC_TOOLBAR_CONFIG = "Chrome.Zinc.ToolbarConfig";
++
+     /** Cached Suggestions and Suggestion Headers. */
+     public static final String KEY_ZERO_SUGGEST_LIST_SIZE = "zero_suggest_list_size";
+ 
+@@ -1378,7 +1381,8 @@ public final class ChromePreferenceKeys {
+                 VERTICAL_TABS_EXPAND_ON_HOVER,
+                 VERTICAL_TABS_USER_RESIZED_WIDTH_DP,
+                 WEB_SIGNIN_ACCOUNT_PICKER_ACTIVE_DISMISSAL_COUNT,
+-                WINDOW_CONTROLS_OVERLAY_ENABLED_PACKAGES);
++                WINDOW_CONTROLS_OVERLAY_ENABLED_PACKAGES,
++                ZINC_TOOLBAR_CONFIG);
+     }
+ 
+     private ChromePreferenceKeys() {}
+diff --git a/chrome/browser/ui/android/strings/android_chrome_strings.grd b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+index 44fd34b1..941e5013 100644
+--- a/chrome/browser/ui/android/strings/android_chrome_strings.grd
++++ b/chrome/browser/ui/android/strings/android_chrome_strings.grd
+@@ -614,6 +614,195 @@ For more settings that use data to improve your Chrome experience, go to <ph nam
+ 
+       <!-- Add Message -->
+ 
++      <!-- Zinc: customizable toolbar. Not translated yet; English is used
++           for every locale. -->
++      <message name="IDS_ZINC_ACTION_BACK" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Back
++      </message>
++      <message name="IDS_ZINC_ACTION_FORWARD" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Forward
++      </message>
++      <message name="IDS_ZINC_ACTION_RELOAD" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Reload
++      </message>
++      <message name="IDS_ZINC_ACTION_STOP" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Stop loading
++      </message>
++      <message name="IDS_ZINC_ACTION_HOME" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Home
++      </message>
++      <message name="IDS_ZINC_ACTION_NEW_TAB" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        New tab
++      </message>
++      <message name="IDS_ZINC_ACTION_NEW_INCOGNITO_TAB" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        New Incognito tab
++      </message>
++      <message name="IDS_ZINC_ACTION_TAB_SWITCHER" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Tab switcher
++      </message>
++      <message name="IDS_ZINC_ACTION_CLOSE_TAB" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Close tab
++      </message>
++      <message name="IDS_ZINC_ACTION_RECENT_TABS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Recent tabs
++      </message>
++      <message name="IDS_ZINC_ACTION_SHARE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Share
++      </message>
++      <message name="IDS_ZINC_ACTION_BOOKMARK_PAGE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Bookmark this page
++      </message>
++      <message name="IDS_ZINC_ACTION_BOOKMARK_PAGE_EDIT" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Edit bookmark
++      </message>
++      <message name="IDS_ZINC_ACTION_FIND_IN_PAGE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Find in page
++      </message>
++      <message name="IDS_ZINC_ACTION_DESKTOP_SITE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Desktop site
++      </message>
++      <message name="IDS_ZINC_ACTION_DESKTOP_SITE_ON" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Desktop site (on)
++      </message>
++      <message name="IDS_ZINC_ACTION_TRANSLATE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Translate
++      </message>
++      <message name="IDS_ZINC_ACTION_READER_MODE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Reading mode
++      </message>
++      <message name="IDS_ZINC_ACTION_PRINT" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Print
++      </message>
++      <message name="IDS_ZINC_ACTION_ADD_TO_HOME_SCREEN" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Add to home screen
++      </message>
++      <message name="IDS_ZINC_ACTION_PAGE_INFO" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Site information
++      </message>
++      <message name="IDS_ZINC_ACTION_COPY_LINK" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Copy link
++      </message>
++      <message name="IDS_ZINC_ACTION_BOOKMARKS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Bookmarks
++      </message>
++      <message name="IDS_ZINC_ACTION_HISTORY" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        History
++      </message>
++      <message name="IDS_ZINC_ACTION_DOWNLOADS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Downloads
++      </message>
++      <message name="IDS_ZINC_ACTION_QUICK_DELETE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Delete last 15 minutes
++      </message>
++      <message name="IDS_ZINC_ACTION_SETTINGS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Settings
++      </message>
++      <message name="IDS_ZINC_ACTION_EXTENSIONS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Extensions
++      </message>
++      <message name="IDS_ZINC_ACTION_MANAGE_EXTENSIONS" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Manage extensions
++      </message>
++      <message name="IDS_ZINC_ACTION_WEB_STORE" desc="Zinc: name and accessibility label of a toolbar button that performs this browser function. [CHAR_LIMIT=32]" translateable="false">
++        Chrome Web Store
++      </message>
++      <message name="IDS_ZINC_ACTION_CATEGORY_NAVIGATION" desc="Zinc: heading for a group of browser functions in the toolbar button picker. [CHAR_LIMIT=32]" translateable="false">
++        Navigation
++      </message>
++      <message name="IDS_ZINC_ACTION_CATEGORY_TABS" desc="Zinc: heading for a group of browser functions in the toolbar button picker. [CHAR_LIMIT=32]" translateable="false">
++        Tabs
++      </message>
++      <message name="IDS_ZINC_ACTION_CATEGORY_PAGE" desc="Zinc: heading for a group of browser functions in the toolbar button picker. [CHAR_LIMIT=32]" translateable="false">
++        This page
++      </message>
++      <message name="IDS_ZINC_ACTION_CATEGORY_BROWSER" desc="Zinc: heading for a group of browser functions in the toolbar button picker. [CHAR_LIMIT=32]" translateable="false">
++        Browser
++      </message>
++      <message name="IDS_ZINC_ACTION_CATEGORY_EXTENSIONS" desc="Zinc: heading for a group of browser functions in the toolbar button picker. [CHAR_LIMIT=32]" translateable="false">
++        Extensions
++      </message>
++      <message name="IDS_ZINC_SETTINGS_TITLE" desc="Zinc: Title of the Zinc toolbar settings page and its entry in Settings. [CHAR_LIMIT=32]" translateable="false">
++        Toolbar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_MAIN_SUMMARY" desc="Zinc: Summary of the toolbar entry in Settings." translateable="false">
++        Buttons, extensions and address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_BUTTONS_SECTION" desc="Zinc: Heading of the toolbar buttons section. [CHAR_LIMIT=32]" translateable="false">
++        Toolbar buttons
++      </message>
++      <message name="IDS_ZINC_SETTINGS_BUTTON_COUNT" desc="Zinc: Setting for how many customizable buttons the toolbar has. [CHAR_LIMIT=40]" translateable="false">
++        Number of buttons
++      </message>
++      <message name="IDS_ZINC_SETTINGS_START_COUNT" desc="Zinc: Setting for how many toolbar buttons are left of the address bar. [CHAR_LIMIT=40]" translateable="false">
++        Buttons left of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_START_COUNT_RTL" desc="Zinc: Right-to-left variant: how many toolbar buttons are right of the address bar. [CHAR_LIMIT=40]" translateable="false">
++        Buttons right of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_BUTTON_SUMMARY" desc="Zinc: Summary of a toolbar button row: its position and which side of the address bar it is on." translateable="false">
++        Button <ph name="BUTTON_NUMBER">%1$d<ex>2</ex></ph> · <ph name="SIDE">%2$s<ex>Left of the address bar</ex></ph>
++      </message>
++      <message name="IDS_ZINC_SETTINGS_SIDE_LEFT" desc="Zinc: Placement of a toolbar button." translateable="false">
++        Left of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_SIDE_RIGHT" desc="Zinc: Placement of a toolbar button." translateable="false">
++        Right of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_CHANGE_FUNCTION" desc="Zinc: Option to pick which browser function a toolbar button performs." translateable="false">
++        Change function
++      </message>
++      <message name="IDS_ZINC_SETTINGS_PLACE_LEFT" desc="Zinc: Option to move a toolbar button to the left side of the address bar." translateable="false">
++        Move left of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_PLACE_RIGHT" desc="Zinc: Option to move a toolbar button to the right side of the address bar." translateable="false">
++        Move right of the address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_MOVE_LEFT" desc="Zinc: Option to move a toolbar button one position to the left." translateable="false">
++        Move one step left
++      </message>
++      <message name="IDS_ZINC_SETTINGS_MOVE_RIGHT" desc="Zinc: Option to move a toolbar button one position to the right." translateable="false">
++        Move one step right
++      </message>
++      <message name="IDS_ZINC_SETTINGS_REMOVE_BUTTON" desc="Zinc: Option to remove a button from the toolbar." translateable="false">
++        Remove button
++      </message>
++      <message name="IDS_ZINC_SETTINGS_SWAP_NOTE" desc="Zinc: Note under a function that another toolbar button already performs." translateable="false">
++        On button <ph name="BUTTON_NUMBER">%1$d<ex>2</ex></ph>. Picking it swaps the two buttons.
++      </message>
++      <message name="IDS_ZINC_SETTINGS_CURRENT_FUNCTION" desc="Zinc: Accessibility label of the check mark next to the current function." translateable="false">
++        Current function
++      </message>
++      <message name="IDS_ZINC_SETTINGS_RESET" desc="Zinc: Setting that restores the default toolbar buttons." translateable="false">
++        Reset toolbar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_RESET_SUMMARY" desc="Zinc: Describes the default toolbar buttons." translateable="false">
++        Back on the left, tab switcher on the right
++      </message>
++      <message name="IDS_ZINC_SETTINGS_EXTENSIONS_SECTION" desc="Zinc: Heading of the extensions section. [CHAR_LIMIT=32]" translateable="false">
++        Extensions
++      </message>
++      <message name="IDS_ZINC_SETTINGS_SHOW_EXTENSIONS_BUTTON" desc="Zinc: Switch that shows the extensions (puzzle) button on the toolbar." translateable="false">
++        Show Extensions button
++      </message>
++      <message name="IDS_ZINC_SETTINGS_SHOW_EXTENSIONS_BUTTON_SUMMARY" desc="Zinc: Explains the extensions (puzzle) button." translateable="false">
++        Puzzle icon next to the menu, for pinning and unpinning extensions
++      </message>
++      <message name="IDS_ZINC_SETTINGS_EXTENSIONS_HELP" desc="Zinc: Explains how to pin, unpin and reorder extensions on the toolbar." translateable="false">
++        Pinned extensions sit between your buttons and the menu. To pin one, tap the puzzle icon, then tap the pin next to the extension. To unpin, long-press its icon on the toolbar and choose Unpin. Drag pinned icons to reorder them. Extensions that do not fit stay in the puzzle menu.
++      </message>
++      <message name="IDS_ZINC_SETTINGS_ADDRESS_BAR_SECTION" desc="Zinc: Heading of the address bar section. [CHAR_LIMIT=32]" translateable="false">
++        Address bar
++      </message>
++      <message name="IDS_ZINC_SETTINGS_PREVIEW_ADDRESS" desc="Zinc: Placeholder text of the address box in the toolbar preview." translateable="false">
++        Search or type URL
++      </message>
++      <message name="IDS_ZINC_SETTINGS_PREVIEW_CAPTION" desc="Zinc: Caption under the toolbar preview." translateable="false">
++        Pinned extensions appear just before the menu.
++      </message>
++      <message name="IDS_ZINC_SETTINGS_PREVIEW_DESCRIPTION" desc="Zinc: Accessibility description of the toolbar preview." translateable="false">
++        Toolbar preview: <ph name="START_COUNT">%1$d<ex>1</ex></ph> buttons before the address bar, <ph name="END_COUNT">%2$d<ex>2</ex></ph> after it
++      </message>
++
+       <!-- Address bar settings -->
+       <message name="IDS_ADDRESS_BAR_SETTINGS" desc="Title for Address Bar settings. [CHAR_LIMIT=32]">
+         Address bar
+diff --git a/chrome/browser/ui/android/toolbar/BUILD.gn b/chrome/browser/ui/android/toolbar/BUILD.gn
+index 55277fd8..1f6b333a 100644
+--- a/chrome/browser/ui/android/toolbar/BUILD.gn
++++ b/chrome/browser/ui/android/toolbar/BUILD.gn
+@@ -231,6 +231,16 @@ android_library("core_java") {
+     "java/src/org/chromium/chrome/browser/toolbar/top/tab_strip/FadeTransitionHandler.java",
+     "java/src/org/chromium/chrome/browser/toolbar/top/tab_strip/HeightTransitionHandler.java",
+     "java/src/org/chromium/chrome/browser/toolbar/top/tab_strip/TabStripTransitionCoordinator.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/ZincActionResources.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/ZincToolbarButtonsCoordinator.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/ZincToolbarPrefs.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincAction.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincToolbarButton.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincToolbarConfig.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincToolbarWidthPlanner.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/settings/ZincActionPickerAdapter.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/settings/ZincToolbarPreviewPreference.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/settings/ZincToolbarSettingsFragment.java",
+   ]
+ 
+   deps = [
+@@ -421,6 +431,40 @@ android_resources("java_resources") {
+     "java/res/drawable/toolbar_position_bottom_to_top.xml",
+     "java/res/drawable/toolbar_position_state_animation.xml",
+     "java/res/drawable/toolbar_position_top_to_bottom.xml",
++    "java/res/drawable/zinc_ic_add_to_home_screen.xml",
++    "java/res/drawable/zinc_ic_back.xml",
++    "java/res/drawable/zinc_ic_bookmark_page.xml",
++    "java/res/drawable/zinc_ic_bookmark_page_filled.xml",
++    "java/res/drawable/zinc_ic_bookmarks.xml",
++    "java/res/drawable/zinc_ic_check.xml",
++    "java/res/drawable/zinc_ic_close_tab.xml",
++    "java/res/drawable/zinc_ic_copy_link.xml",
++    "java/res/drawable/zinc_ic_desktop_site.xml",
++    "java/res/drawable/zinc_ic_desktop_site_filled.xml",
++    "java/res/drawable/zinc_ic_downloads.xml",
++    "java/res/drawable/zinc_ic_extensions.xml",
++    "java/res/drawable/zinc_ic_find_in_page.xml",
++    "java/res/drawable/zinc_ic_forward.xml",
++    "java/res/drawable/zinc_ic_history.xml",
++    "java/res/drawable/zinc_ic_home.xml",
++    "java/res/drawable/zinc_ic_manage_extensions.xml",
++    "java/res/drawable/zinc_ic_more_vert.xml",
++    "java/res/drawable/zinc_ic_new_incognito_tab.xml",
++    "java/res/drawable/zinc_ic_new_tab.xml",
++    "java/res/drawable/zinc_ic_page_info.xml",
++    "java/res/drawable/zinc_ic_print.xml",
++    "java/res/drawable/zinc_ic_quick_delete.xml",
++    "java/res/drawable/zinc_ic_reader_mode.xml",
++    "java/res/drawable/zinc_ic_recent_tabs.xml",
++    "java/res/drawable/zinc_ic_reload.xml",
++    "java/res/drawable/zinc_ic_settings.xml",
++    "java/res/drawable/zinc_ic_share.xml",
++    "java/res/drawable/zinc_ic_stop.xml",
++    "java/res/drawable/zinc_ic_tab_switcher.xml",
++    "java/res/drawable/zinc_ic_translate.xml",
++    "java/res/drawable/zinc_ic_web_store.xml",
++    "java/res/drawable/zinc_preview_address_box_background.xml",
++    "java/res/drawable/zinc_preview_bar_background.xml",
+     "java/res/layout/account_menu.xml",
+     "java/res/layout/account_menu_divider.xml",
+     "java/res/layout/account_menu_identity_card.xml",
+@@ -448,6 +492,11 @@ android_resources("java_resources") {
+     "java/res/layout/toolbar_phone.xml",
+     "java/res/layout/toolbar_progress_bar.xml",
+     "java/res/layout/toolbar_tablet.xml",
++    "java/res/layout/zinc_action_picker_header.xml",
++    "java/res/layout/zinc_action_picker_item.xml",
++    "java/res/layout/zinc_toolbar_button.xml",
++    "java/res/layout/zinc_toolbar_preview_preference.xml",
++    "java/res/layout/zinc_toolbar_preview_slot.xml",
+     "java/res/values-night/drawables.xml",
+     "java/res/values-sw600dp/dimens.xml",
+     "java/res/values/dimens.xml",
+@@ -455,8 +504,11 @@ android_resources("java_resources") {
+     "java/res/values/ids.xml",
+     "java/res/values/styles.xml",
+     "java/res/values/values.xml",
++    "java/res/values/zinc_dimens.xml",
++    "java/res/values/zinc_ids.xml",
+     "java/res/xml/adaptive_toolbar_preference.xml",
+     "java/res/xml/address_bar_settings.xml",
++    "java/res/xml/zinc_toolbar_settings.xml",
+   ]
+ 
+   deps = [
+@@ -519,6 +571,9 @@ robolectric_library("junit") {
+     "java/src/org/chromium/chrome/browser/toolbar/top/TopToolbarOverlayMediatorTest.java",
+     "java/src/org/chromium/chrome/browser/toolbar/top/VisibleUrlTextTest.java",
+     "java/src/org/chromium/chrome/browser/toolbar/top/tab_strip/TabStripTransitionCoordinatorUnitTest.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincActionTest.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincToolbarConfigTest.java",
++    "java/src/org/chromium/chrome/browser/toolbar/zinc/core/ZincToolbarWidthPlannerTest.java",
+   ]
+ 
+   deps = [
+diff --git a/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml b/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
+index 9e1f21d5..293ce900 100644
+--- a/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
++++ b/chrome/browser/ui/android/toolbar/java/res/layout/toolbar_phone.xml
+@@ -35,6 +35,15 @@ found in the LICENSE file.
+         app:tint="@color/default_icon_color_tint_list"
+         android:visibility="gone" />
+ 
++    <!-- Zinc: customizable buttons placed before the address box. -->
++    <LinearLayout
++        android:id="@+id/zinc_start_buttons"
++        android:orientation="horizontal"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_gravity="top|start"
++        android:visibility="gone" />
++
+     <View
+         android:id="@+id/location_bar_background_view"
+         android:visibility="gone"
+@@ -79,9 +88,30 @@ found in the LICENSE file.
+             style="@style/ToolbarHoverableButton"
+             android:layout_gravity="top"
+             android:clickable="false"
++            android:visibility="gone"
+             app:menuMaxWidth="@dimen/tab_switcher_menu_width"
+             app:menuVerticalOverlapAnchor="false"/>
+ 
++        <!-- Zinc: customizable buttons placed after the address box. -->
++        <LinearLayout
++            android:id="@+id/zinc_end_buttons"
++            android:orientation="horizontal"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:layout_gravity="top"
++            android:visibility="gone" />
++
++        <!-- Zinc: pinned extensions sit between the end buttons and the app
++             menu. Inflated by ExtensionsToolbarCoordinator when extensions
++             are available. -->
++        <ViewStub
++            android:id="@+id/extensions_toolbar_container_stub"
++            android:inflatedId="@+id/extensions_toolbar_container"
++            android:layout_width="wrap_content"
++            android:layout_height="?attr/toolbarButtonHeight"
++            android:layout_gravity="top"
++            android:layout_marginVertical="?attr/toolbarButtonMarginVertical"/>
++
+         <include layout="@layout/menu_button"/>
+ 
+     </LinearLayout>
+diff --git a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
+index 1d744eaa..55848fe1 100644
+--- a/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
++++ b/chrome/browser/ui/android/toolbar/java/src/org/chromium/chrome/browser/toolbar/top/ToolbarPhone.java
+@@ -66,6 +66,7 @@ import org.chromium.build.annotations.NullUnmarked;
+ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
+ import org.chromium.chrome.browser.flags.ChromeFeatureList;
++import org.chromium.chrome.browser.layouts.toolbar.ToolbarWidthConsumer;
+ import org.chromium.chrome.browser.ntp.NewTabPageUtils;
+ import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils;
+ import org.chromium.chrome.browser.omnibox.LocationBar;
+@@ -88,6 +89,7 @@ import org.chromium.chrome.browser.toolbar.ToolbarTabController;
+ import org.chromium.chrome.browser.toolbar.ToolbarVariationUtils;
+ import org.chromium.chrome.browser.toolbar.back_button.BackButtonCoordinator;
+ import org.chromium.chrome.browser.toolbar.download_button.DownloadButtonCoordinator;
++import org.chromium.chrome.browser.toolbar.extensions.ExtensionsToolbarCoordinator;
+ import org.chromium.chrome.browser.toolbar.forward_button.ForwardButtonCoordinator;
+ import org.chromium.chrome.browser.toolbar.home_button.HomeButtonCoordinator;
+ import org.chromium.chrome.browser.toolbar.menu_button.MenuButtonCoordinator;
+@@ -99,6 +101,8 @@ import org.chromium.chrome.browser.toolbar.signin_button.SigninButtonCoordinator
+ import org.chromium.chrome.browser.toolbar.top.CaptureReadinessResult.TopToolbarBlockCaptureReason;
+ import org.chromium.chrome.browser.toolbar.top.NavigationPopup.HistoryDelegate;
+ import org.chromium.chrome.browser.toolbar.top.TopToolbarCoordinator.ToolbarColorObserver;
++import org.chromium.chrome.browser.toolbar.zinc.ZincToolbarButtonsCoordinator;
++import org.chromium.chrome.browser.toolbar.zinc.core.ZincToolbarWidthPlanner;
+ import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+ import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+ import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
+@@ -141,6 +145,12 @@ public class ToolbarPhone extends ToolbarLayout
+     // Values used during animation to show/hide optional toolbar button.
+     private static final float UNINITIALIZED_FRACTION = -1f;
+ 
++    /**
++     * Zinc: Home, the tab switcher and the adaptive shortcut are replaced by the user's pinnable
++     * toolbar buttons (see {@link ZincToolbarButtonsCoordinator}), so the stock versions are hidden.
++     */
++    private static final boolean ZINC_REPLACES_STOCK_BUTTONS = true;
++
+     /** States that the toolbar can be in regarding the tab switcher. */
+     protected static final int STATIC_TAB = 0;
+ 
+@@ -169,6 +179,15 @@ public class ToolbarPhone extends ToolbarLayout
+     private View mToolbarBackButton;
+     private @Nullable BackButtonCoordinator mBackButtonCoordinator;
+ 
++    // Zinc: the customizable buttons around the address box, and the pinned extensions that sit
++    // between the end buttons and the app menu.
++    private ZincToolbarButtonsCoordinator mZincButtons;
++    private @Nullable ExtensionsToolbarCoordinator mExtensionsToolbarCoordinator;
++    private @Nullable View mExtensionsContainer;
++    private final List<ZincToolbarWidthPlanner.WidthConsumer> mExtensionsWidthConsumers =
++            new ArrayList<>();
++    private int mToolbarIconRippleId = R.drawable.default_icon_background;
++
+     @ViewDebug.ExportedProperty(category = "chrome")
+     protected int mTabSwitcherState;
+ 
+@@ -379,6 +398,12 @@ public class ToolbarPhone extends ToolbarLayout
+             mToolbarButtonsContainer = findViewById(R.id.toolbar_buttons);
+             mHomeButton = findViewById(R.id.home_button);
+             mToolbarBackButton = findViewById(R.id.back_button);
++            mZincButtons =
++                    new ZincToolbarButtonsCoordinator(
++                            getContext(),
++                            findViewById(R.id.zinc_start_buttons),
++                            findViewById(R.id.zinc_end_buttons),
++                            this::onZincButtonsChanged);
+ 
+             mToolbarBackground =
+                     new ColorDrawable(getToolbarColorForVisualState(VisualState.NORMAL));
+@@ -445,6 +470,7 @@ public class ToolbarPhone extends ToolbarLayout
+         mUserEducationHelper = userEducationHelper;
+         mTrackerSupplier = trackerSupplier;
+         mBackButtonCoordinator = backButtonCoordinator;
++        mZincButtons.setHistoryDelegate(historyDelegate);
+         mUseAdjustedTintColorForNtp =
+                 NtpCustomizationUtils.shouldAdjustIconTintForNtp(windowAndroid, /* isLff= */ false);
+ 
+@@ -528,6 +554,9 @@ public class ToolbarPhone extends ToolbarLayout
+         }
+ 
+         getToolbarDataProvider().removeToolbarDataProviderObserver(this);
++        mZincButtons.destroy();
++        mExtensionsWidthConsumers.clear();
++        mExtensionsToolbarCoordinator = null;
+ 
+         super.destroy();
+     }
+@@ -699,6 +728,7 @@ public class ToolbarPhone extends ToolbarLayout
+             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+             return;
+         }
++        allocateExtensionsWidth(MeasureSpec.getSize(widthMeasureSpec));
+         if (!mDisableLocationBarRelayout) {
+             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+ 
+@@ -882,6 +912,9 @@ public class ToolbarPhone extends ToolbarLayout
+             int buttonWidth = mToolbarBackButton.getMeasuredWidth();
+             padding = Math.max(padding, buttonWidth);
+         }
++        if (mZincButtons.getStartContainer().getVisibility() != GONE) {
++            padding = Math.max(padding, mZincButtons.getStartWidth());
++        }
+ 
+         return padding;
+     }
+@@ -1277,6 +1310,13 @@ public class ToolbarPhone extends ToolbarLayout
+             mBackButtonCoordinator.setVisibility(
+                     toolbarButtonVisibility == VISIBLE && showBackButtonOutside);
+         }
++        if (mZincButtons.hasStartButtons()) {
++            mZincButtons.getStartContainer().setVisibility(toolbarButtonVisibility);
++        }
++        if (mUrlExpansionFraction == 0f) {
++            // Safety net in case a focus animation was cancelled midway.
++            for (View view : getZincAnimatedViews()) view.setAlpha(1f);
++        }
+ 
+         updateLocationBarLayoutForExpansionAnimation();
+     }
+@@ -1504,6 +1544,7 @@ public class ToolbarPhone extends ToolbarLayout
+         if (!mUrlFocusChangeInProgress) {
+             mToolbarButtonsContainer.setTranslationY(0);
+             mHomeButton.setTranslationY(0);
++            mZincButtons.getStartContainer().setTranslationY(0);
+         }
+ 
+         if (!mUrlFocusChangeInProgress && getToolbarHairline() != null) {
+@@ -1641,6 +1682,7 @@ public class ToolbarPhone extends ToolbarLayout
+ 
+         mToolbarButtonsContainer.setTranslationY(transY);
+         mHomeButton.setTranslationY(transY);
++        mZincButtons.getStartContainer().setTranslationY(transY);
+     }
+ 
+     private void setAncestorsShouldClipChildren(boolean clip) {
+@@ -1662,6 +1704,11 @@ public class ToolbarPhone extends ToolbarLayout
+             drawChild(canvas, mHomeButton, SystemClock.uptimeMillis());
+         }
+ 
++        View zincStartButtons = mZincButtons.getStartContainer();
++        if (zincStartButtons.getVisibility() == VISIBLE) {
++            drawChild(canvas, zincStartButtons, SystemClock.uptimeMillis());
++        }
++
+         if (mBackButtonCoordinator != null && mBackButtonCoordinator.isVisible()) {
+             drawChild(canvas, mToolbarBackButton, SystemClock.uptimeMillis());
+         }
+@@ -1719,6 +1766,14 @@ public class ToolbarPhone extends ToolbarLayout
+             tabSwitcherButtonCoordinator.draw(mToolbarButtonsContainer, canvas);
+         }
+ 
++        // Draw the Zinc end buttons and the pinned extensions.
++        if (mUrlExpansionFraction != 1f) {
++            drawToolbarButtonsChild(canvas, mZincButtons.getEndContainer());
++            if (mExtensionsContainer != null) {
++                drawToolbarButtonsChild(canvas, mExtensionsContainer);
++            }
++        }
++
+         // Draw the menu button if necessary.
+         final MenuButtonCoordinator menuButtonCoordinator = getMenuButtonCoordinator();
+         if (menuButtonCoordinator != null && menuButtonCoordinator.isVisible()) {
+@@ -1783,7 +1838,8 @@ public class ToolbarPhone extends ToolbarLayout
+     }
+ 
+     private boolean isChildLeft(View child) {
+-        return (child == mHomeButton) ^ LocalizationUtils.isLayoutRtl();
++        return (child == mHomeButton || child == mZincButtons.getStartContainer())
++                ^ LocalizationUtils.isLayoutRtl();
+     }
+ 
+     /**
+@@ -2116,7 +2172,10 @@ public class ToolbarPhone extends ToolbarLayout
+         boolean showBackButtonOutside = shouldShowBackButtonOutside();
+         // Under the toolbar UI refactor, the home button moves to the bottom bar and
+         // is never shown in the top toolbar.
+-        boolean hideHomeButton = !mIsHomeButtonEnabled || mIsToolbarUiRefactorEnabled;
++        boolean hideHomeButton =
++                !mIsHomeButtonEnabled
++                        || mIsToolbarUiRefactorEnabled
++                        || ZINC_REPLACES_STOCK_BUTTONS;
+         if (hideHomeButton) {
+             mHomeButton.setVisibility(View.GONE);
+         } else {
+@@ -2131,7 +2190,14 @@ public class ToolbarPhone extends ToolbarLayout
+ 
+         var tabSwitcherButtonCoordinator = getTabSwitcherButtonCoordinator();
+         if (tabSwitcherButtonCoordinator != null) {
+-            tabSwitcherButtonCoordinator.setHasSpaceToShow(!mIsToolbarUiRefactorEnabled);
++            tabSwitcherButtonCoordinator.setHasSpaceToShow(
++                    !mIsToolbarUiRefactorEnabled && !ZINC_REPLACES_STOCK_BUTTONS);
++        }
++
++        if (mZincButtons.hasStartButtons()) {
++            mZincButtons
++                    .getStartContainer()
++                    .setVisibility(urlHasFocus() ? View.INVISIBLE : View.VISIBLE);
+         }
+     }
+ 
+@@ -2150,6 +2216,8 @@ public class ToolbarPhone extends ToolbarLayout
+         if (mOptionalButtonCoordinator != null) {
+             mOptionalButtonCoordinator.setBrandedColorScheme(brandedColorScheme);
+         }
++        mZincButtons.setTint(
++                activityFocusTint != null ? activityFocusTint : tint, brandedColorScheme);
+ 
+         // TODO(amaralp): Have the LocationBar listen to tint changes.
+         if (mLocationBar != null) mLocationBar.updateVisualsForState();
+@@ -2334,6 +2402,13 @@ public class ToolbarPhone extends ToolbarLayout
+         animator.setInterpolator(Interpolators.FAST_OUT_LINEAR_IN_INTERPOLATOR);
+         animators.add(animator);
+ 
++        for (View view : getZincAnimatedViews()) {
++            animator = ObjectAnimator.ofFloat(view, ALPHA, 0);
++            animator.setDuration(toolbarButtonFadeDuration);
++            animator.setInterpolator(Interpolators.FAST_OUT_LINEAR_IN_INTERPOLATOR);
++            animators.add(animator);
++        }
++
+         if (getTabSwitcherButtonCoordinator() != null) {
+             animator =
+                     ObjectAnimator.ofFloat(
+@@ -2377,6 +2452,14 @@ public class ToolbarPhone extends ToolbarLayout
+         animator.setInterpolator(Interpolators.FAST_OUT_LINEAR_IN_INTERPOLATOR);
+         animators.add(animator);
+ 
++        for (View view : getZincAnimatedViews()) {
++            animator = ObjectAnimator.ofFloat(view, ALPHA, 1);
++            animator.setDuration(URL_FOCUS_TOOLBAR_BUTTONS_DURATION_MS);
++            animator.setStartDelay(URL_CLEAR_FOCUS_TABSTACK_DELAY_MS);
++            animator.setInterpolator(Interpolators.FAST_OUT_SLOW_IN_INTERPOLATOR);
++            animators.add(animator);
++        }
++
+         if (getTabSwitcherButtonCoordinator() != null) {
+             animator =
+                     ObjectAnimator.ofFloat(
+@@ -2699,6 +2782,9 @@ public class ToolbarPhone extends ToolbarLayout
+                 new TransitionSet()
+                         .addTransition(new Slide(Gravity.START).addTarget(mHomeButton))
+                         .addTransition(new Slide(Gravity.START).addTarget(mToolbarBackButton))
++                        .addTransition(
++                                new Slide(Gravity.START)
++                                        .addTarget(mZincButtons.getStartContainer()))
+                         .addTransition(new Slide(Gravity.END).addTarget(mToolbarButtonsContainer))
+                         .addTransition(new Fade().addTarget(mToolbarButtonsContainer))
+                         .setDuration(toolbarBtnTransitionDuration)
+@@ -2762,6 +2848,9 @@ public class ToolbarPhone extends ToolbarLayout
+         }
+         mToolbarButtonsContainer.setVisibility(toolbarBtnsVis);
+         mHomeButton.setVisibility(homeBtnVis);
++        if (mZincButtons.hasStartButtons()) {
++            mZincButtons.getStartContainer().setVisibility(toolbarBtnsVis);
++        }
+ 
+         if (mToolbarBackButton != null) {
+             int backBtnVis = GONE;
+@@ -2930,11 +3019,13 @@ public class ToolbarPhone extends ToolbarLayout
+     @Override
+     public void onIncognitoStateChanged() {
+         updateRippleBackground();
++        mZincButtons.setIncognito(isIncognitoBranded());
+     }
+ 
+     @Override
+     public void setTabCountSupplier(MonotonicObservableSupplier<Integer> tabCountSupplier) {
+         mTabCountSupplier = tabCountSupplier;
++        mZincButtons.setTabCountSupplier(tabCountSupplier);
+     }
+ 
+     @Override
+@@ -2984,6 +3075,11 @@ public class ToolbarPhone extends ToolbarLayout
+         mHomeButton.setBackgroundResource(toolbarIconRippleId);
+         getMenuButtonCoordinator().updateButtonBackground(toolbarIconRippleId);
+         mLocationBar.updateButtonBackground(omniboxIconRippleId);
++        mToolbarIconRippleId = toolbarIconRippleId;
++        mZincButtons.setButtonBackground(toolbarIconRippleId);
++        if (mExtensionsToolbarCoordinator != null) {
++            mExtensionsToolbarCoordinator.updateMenuButtonBackground(toolbarIconRippleId);
++        }
+     }
+ 
+     private static boolean isVisualStateValidForBrandColorTransition(@VisualState int state) {
+@@ -3813,6 +3909,7 @@ public class ToolbarPhone extends ToolbarLayout
+     }
+ 
+     private boolean shouldShowOptionalButtonInToolbar(@Nullable ButtonData buttonData) {
++        if (ZINC_REPLACES_STOCK_BUTTONS) return false;
+         boolean isNtp = isNtpVisualState(mVisualState);
+         boolean isSignInLevelUp = SigninFeatureMap.sSigninLevelUpButton.isEnabled();
+         if (mIsToolbarUiRefactorEnabled) {
+@@ -3823,4 +3920,84 @@ public class ToolbarPhone extends ToolbarLayout
+             return !(isNtp && isSignInLevelUp);
+         }
+     }
++
++    /** Zinc: returns the coordinator of the customizable toolbar buttons. */
++    public ZincToolbarButtonsCoordinator getZincButtonsCoordinator() {
++        return mZincButtons;
++    }
++
++    @Override
++    public void setExtensionsToolbarCoordinator(
++            @Nullable ExtensionsToolbarCoordinator extensionsToolbarCoordinator) {
++        mExtensionsToolbarCoordinator = extensionsToolbarCoordinator;
++        mExtensionsWidthConsumers.clear();
++        mExtensionsContainer = null;
++        if (extensionsToolbarCoordinator != null) {
++            mExtensionsContainer = findViewById(R.id.extensions_toolbar_container);
++            // Same priority order as the tablet toolbar (see ToolbarUtils): the popped-out action
++            // first, then the extensions menu button, then the pinned actions.
++            ToolbarWidthConsumer[] consumers = {
++                extensionsToolbarCoordinator.getPoppedOutActionWidthConsumer(),
++                extensionsToolbarCoordinator.getMenuButtonWidthConsumer(),
++                extensionsToolbarCoordinator.getRequestAccessButtonWidthConsumer(),
++                extensionsToolbarCoordinator.getActionListWidthConsumer()
++            };
++            for (ToolbarWidthConsumer consumer : consumers) {
++                mExtensionsWidthConsumers.add(consumer::updateVisibility);
++            }
++            extensionsToolbarCoordinator.updateMenuButtonBackground(mToolbarIconRippleId);
++        }
++        ViewUtils.requestLayout(this, "ToolbarPhone.setExtensionsToolbarCoordinator");
++    }
++
++    @Override
++    void updateBookmarkButton(boolean isBookmarked, boolean editingAllowed) {
++        mZincButtons.setBookmarkState(isBookmarked, editingAllowed);
++    }
++
++    /** Zinc: called when the user changed the layout of the customizable buttons. */
++    private void onZincButtonsChanged() {
++        updateButtonVisibility();
++        ViewUtils.requestLayout(this, "ToolbarPhone.onZincButtonsChanged");
++    }
++
++    /**
++     * Zinc: offers the pinned extensions whatever width the address box can spare after the
++     * customizable buttons and the app menu. Extensions that do not fit overflow into the
++     * extensions menu instead of squeezing the address box.
++     */
++    private void allocateExtensionsWidth(int toolbarWidth) {
++        if (mExtensionsWidthConsumers.isEmpty()) return;
++        Resources res = getResources();
++        int reservedWidth = mZincButtons.getStartWidth() + mZincButtons.getEndWidth();
++        MenuButtonCoordinator menuButtonCoordinator = getMenuButtonCoordinator();
++        if (menuButtonCoordinator != null && menuButtonCoordinator.isVisible()) {
++            reservedWidth += res.getDimensionPixelSize(R.dimen.toolbar_button_width);
++        }
++        if (!mZincButtons.hasStartButtons()) reservedWidth += mToolbarSidePaddingForNtp;
++        int budget =
++                ZincToolbarWidthPlanner.extensionsBudget(
++                        toolbarWidth,
++                        reservedWidth,
++                        res.getDimensionPixelSize(R.dimen.zinc_min_location_bar_width));
++        ZincToolbarWidthPlanner.allocate(budget, mExtensionsWidthConsumers);
++    }
++
++    /** Draws a direct child of the end toolbar buttons container during texture capture. */
++    private void drawToolbarButtonsChild(Canvas canvas, View child) {
++        if (child.getVisibility() != VISIBLE || child.getWidth() == 0) return;
++        canvas.save();
++        ViewUtils.translateCanvasToView(mToolbarButtonsContainer, child, canvas);
++        child.draw(canvas);
++        canvas.restore();
++    }
++
++    /** Returns the Zinc views that fade out while the address box is focused. */
++    private List<View> getZincAnimatedViews() {
++        List<View> views = new ArrayList<>(3);
++        views.add(mZincButtons.getStartContainer());
++        views.add(mZincButtons.getEndContainer());
++        if (mExtensionsContainer != null) views.add(mExtensionsContainer);
++        return views;
++    }
+ }

@@ -1,0 +1,67 @@
+# Copyright 2026 The Zinc Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_apk:
+        description: "Build the APK on the self-hosted 'zinc-builder' runner"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    name: Toolbar core unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - run: gradle -p standalone test --no-daemon
+
+  verify-patches:
+    name: Patches apply to pinned Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint scripts
+        run: |
+          bash -n scripts/*.sh
+          python3 -m py_compile tools/*.py
+      - name: Apply overlay and patches to a sparse Chromium clone
+        run: scripts/verify_patches.sh "${RUNNER_TEMP}/verify"
+
+  build-apk:
+    name: Build APK
+    if: github.event_name == 'workflow_dispatch' && inputs.build_apk
+    needs: [core-tests, verify-patches]
+    # Chromium needs ~150 GB of disk and many CPU hours, more than hosted
+    # runners provide. Register a Linux x86-64 self-hosted runner with the
+    # 'zinc-builder' label and depot_tools installed (see docs/BUILDING.md).
+    runs-on: [self-hosted, linux, x64, zinc-builder]
+    timeout-minutes: 1440
+    env:
+      ZINC_CHROMIUM_DIR: ${{ vars.ZINC_CHROMIUM_DIR || '/opt/zinc/chromium' }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/fetch_chromium.sh --no-install-deps
+      - run: scripts/apply_patches.sh --reset
+      - run: scripts/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zinc-apk
+          path: dist/*.apk
+          if-no-files-found: error

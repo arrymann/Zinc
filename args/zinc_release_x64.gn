@@ -1,0 +1,46 @@
+# Copyright 2026 The Zinc Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# Release build of Zinc for x86-64: the Android emulator, ChromeOS and
+# x86-64 Android desktops. Usage: scripts/build.sh args/zinc_release_x64.gn
+
+target_os = "android"
+target_cpu = "x64"
+
+# Desktop-class extensions: this is the configuration in which upstream
+# Chromium builds and tests the extensions platform on Android
+# (enable_desktop_android_extensions, chrome://extensions, the Web Store
+# installer). Patch 0002 keeps the phone UI despite this flag; whether the
+# device is treated as a desktop is still decided at runtime (FEATURE_PC).
+is_desktop_android = true
+
+# Identity. Installs side by side with Chrome and Chromium.
+chrome_public_manifest_package = "app.zinc.browser"
+android_channel = "stable"
+is_chrome_branded = false
+use_official_google_api_keys = false
+
+# Optimized, non-debug build.
+is_official_build = true
+is_debug = false
+is_component_build = false
+dcheck_always_on = false
+symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
+
+# Official builds expect Google's PGO profiles; Zinc does not ship them.
+chrome_pgo_phase = 0
+
+# Codecs commonly needed on the web.
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+
+# No field trial testing config: unreleased experiments stay off.
+disable_fieldtrial_testing_config = true
+
+# Lint and other static analysis add hours to official builds; run them in
+# the debug configuration instead.
+android_static_analysis = "off"
+treat_warnings_as_errors = false

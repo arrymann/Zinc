@@ -1,0 +1,14 @@
+# Built APKs (scripts/build.sh).
+/dist/
+
+# Standalone Gradle build of the toolbar core.
+/standalone/.gradle/
+/standalone/build/
+
+# Editors.
+.idea/
+*.iml
+.vscode/
+
+# Python bytecode.
+__pycache__/

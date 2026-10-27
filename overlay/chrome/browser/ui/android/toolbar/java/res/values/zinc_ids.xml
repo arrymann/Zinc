@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Zinc Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<!-- Stable view ids for the Zinc toolbar buttons, one per pinnable action. -->
+<resources>
+    <item type="id" name="zinc_button_back" />
+    <item type="id" name="zinc_button_forward" />
+    <item type="id" name="zinc_button_reload" />
+    <item type="id" name="zinc_button_home" />
+    <item type="id" name="zinc_button_new_tab" />
+    <item type="id" name="zinc_button_new_incognito_tab" />
+    <item type="id" name="zinc_button_tab_switcher" />
+    <item type="id" name="zinc_button_close_tab" />
+    <item type="id" name="zinc_button_recent_tabs" />
+    <item type="id" name="zinc_button_share" />
+    <item type="id" name="zinc_button_bookmark_page" />
+    <item type="id" name="zinc_button_find_in_page" />
+    <item type="id" name="zinc_button_desktop_site" />
+    <item type="id" name="zinc_button_translate" />
+    <item type="id" name="zinc_button_reader_mode" />
+    <item type="id" name="zinc_button_print" />
+    <item type="id" name="zinc_button_add_to_home_screen" />
+    <item type="id" name="zinc_button_page_info" />
+    <item type="id" name="zinc_button_copy_link" />
+    <item type="id" name="zinc_button_bookmarks" />
+    <item type="id" name="zinc_button_history" />
+    <item type="id" name="zinc_button_downloads" />
+    <item type="id" name="zinc_button_quick_delete" />
+    <item type="id" name="zinc_button_settings" />
+    <item type="id" name="zinc_button_extensions" />
+    <item type="id" name="zinc_button_manage_extensions" />
+    <item type="id" name="zinc_button_web_store" />
+</resources>

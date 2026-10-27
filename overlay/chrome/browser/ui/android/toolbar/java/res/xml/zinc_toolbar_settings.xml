@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Zinc Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<!-- Settings > Toolbar. The per-button rows are added in code between
+     "zinc_start_count" (order 3) and "zinc_reset" (order 20). Values are
+     stored by ZincToolbarPrefs and the profile's PrefService, so none of
+     these preferences persist themselves. -->
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <org.chromium.chrome.browser.toolbar.zinc.settings.ZincToolbarPreviewPreference
+        android:key="zinc_toolbar_preview"
+        android:order="0"
+        android:selectable="false"
+        app:allowDividerBelow="false" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="zinc_buttons_section"
+        android:order="1"
+        android:title="@string/zinc_settings_buttons_section" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBaseListPreference
+        android:key="zinc_button_count"
+        android:persistent="false"
+        android:order="2"
+        android:title="@string/zinc_settings_button_count"
+        android:dialogTitle="@string/zinc_settings_button_count"
+        app:useSimpleSummaryProvider="true" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBaseListPreference
+        android:key="zinc_start_count"
+        android:persistent="false"
+        android:order="3"
+        android:title="@string/zinc_settings_start_count"
+        android:dialogTitle="@string/zinc_settings_start_count"
+        app:useSimpleSummaryProvider="true" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="zinc_reset"
+        android:order="20"
+        android:title="@string/zinc_settings_reset"
+        android:summary="@string/zinc_settings_reset_summary" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="zinc_extensions_section"
+        android:order="30"
+        android:title="@string/zinc_settings_extensions_section" />
+
+    <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
+        android:key="zinc_show_extensions_button"
+        android:persistent="false"
+        android:order="31"
+        android:title="@string/zinc_settings_show_extensions_button"
+        android:summary="@string/zinc_settings_show_extensions_button_summary" />
+
+    <org.chromium.components.browser_ui.settings.TextMessagePreference
+        android:key="zinc_extensions_help"
+        android:order="32"
+        android:summary="@string/zinc_settings_extensions_help" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="zinc_address_bar_section"
+        android:order="40"
+        android:title="@string/zinc_settings_address_bar_section" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="zinc_address_bar_position"
+        android:order="41"
+        android:title="@string/address_bar_settings"
+        android:fragment="org.chromium.chrome.browser.toolbar.settings.AddressBarSettingsFragment" />
+
+</PreferenceScreen>

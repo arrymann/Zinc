@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinc Authors <zinc@users.noreply.github.com>
+Date: Tue, 27 Oct 2026 11:45:27 +0000
+Subject: [PATCH 2/6] Zinc: Keep the phone UI in desktop-Android builds
+
+Zinc builds with is_desktop_android = true because that is the
+configuration in which upstream compiles and tests the desktop
+extensions platform (enable_desktop_android_extensions). That flag also
+turns on desktop-only UI by default: the WebUI NTP, WebUI theming and the
+side panel. Zinc targets phones, so default those back to off. Runtime
+form-factor checks (DeviceInfo.isDesktop()) still require FEATURE_PC, so
+phones keep the phone toolbar and layouts.
+
+diff --git a/chrome/browser/flags/android/chrome_feature_list.cc b/chrome/browser/flags/android/chrome_feature_list.cc
+index ce8e87cd..4f6db47e 100644
+--- a/chrome/browser/flags/android/chrome_feature_list.cc
++++ b/chrome/browser/flags/android/chrome_feature_list.cc
+@@ -1000,7 +1000,9 @@ BASE_FEATURE(kUseAppTaskForCustomTabActivation, base::FEATURE_ENABLED_BY_DEFAULT
+ BASE_FEATURE(kUsePLinkInHelp, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kUseWebUiBookmarksAndroid, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kUseWebUiNtp3PDSE, base::FEATURE_DISABLED_BY_DEFAULT);
+-BASE_FEATURE(kUseWebUiNtpAndroid, BUILDFLAG(IS_DESKTOP_ANDROID) ? base::FEATURE_ENABLED_BY_DEFAULT : base::FEATURE_DISABLED_BY_DEFAULT);
++// Zinc builds with is_desktop_android for the extensions platform but keeps the
++// phone UI, so the WebUI NTP stays off.
++BASE_FEATURE(kUseWebUiNtpAndroid, base::FEATURE_DISABLED_BY_DEFAULT);
+ // Verify sign-in state on startup.
+ BASE_FEATURE(kVerifyStartupSigninState, base::FEATURE_ENABLED_BY_DEFAULT);
+ BASE_FEATURE(kVirtualKeyboardResizesContentTransientOvershootFix, base::FEATURE_ENABLED_BY_DEFAULT);
+@@ -1010,7 +1012,8 @@ BASE_FEATURE(kWebAppShortEdgesCutoutMode, base::FEATURE_DISABLED_BY_DEFAULT);
+ // Shows only the remote device name on the Android notification instead of
+ // a descriptive text.
+ BASE_FEATURE(kWebOtpCrossDeviceSimpleString, base::FEATURE_DISABLED_BY_DEFAULT);
+-BASE_FEATURE(kWebUiAndroidTheming, BUILDFLAG(IS_DESKTOP_ANDROID) ? base::FEATURE_ENABLED_BY_DEFAULT : base::FEATURE_DISABLED_BY_DEFAULT);
++// Zinc: phone UI theming; see kUseWebUiNtpAndroid.
++BASE_FEATURE(kWebUiAndroidTheming, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kXplatSyncedSetupThemes, base::FEATURE_DISABLED_BY_DEFAULT);
+ BASE_FEATURE(kYourSavedInfoSettingsPageAndroid, base::FEATURE_ENABLED_BY_DEFAULT);
+ // go/keep-sorted end
+diff --git a/chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java b/chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java
+index 1cdb526d..0db6d9aa 100644
+--- a/chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java
++++ b/chrome/browser/flags/android/java/src/org/chromium/chrome/browser/flags/ChromeFeatureList.java
+@@ -1211,7 +1211,9 @@ public abstract class ChromeFeatureList {
+     public static final CachedFlag sEnableAndroidSidePanel =
+             newCachedFlag(
+                     ENABLE_ANDROID_SIDE_PANEL,
+-                    /* defaultValue= */ BuildConfig.IS_DESKTOP_ANDROID,
++                    // Zinc: phones have no room for a side panel, even though Zinc builds with
++                    // is_desktop_android to get the extensions platform.
++                    /* defaultValue= */ false,
+                     // In http://crrev.com/c/7689838, "defaultValueInTests" was set to
+                     // true for testing purposes. Detailed reasons are in that CL's commit message.
+                     //
+@@ -1473,7 +1475,8 @@ public abstract class ChromeFeatureList {
+             newCachedFlag(USE_WEB_UI_BOOKMARKS_ANDROID, /* defaultValue= */ false);
+     public static final CachedFlag sUseWebUiNtp3PDSE = newCachedFlag(USE_WEB_UI_NTP_3P_DSE, false);
+     public static final CachedFlag sUseWebUiNtpAndroid =
+-            newCachedFlag(USE_WEB_UI_NTP_ANDROID, BuildConfig.IS_DESKTOP_ANDROID);
++            // Zinc: keep the phone NTP even though Zinc builds with is_desktop_android.
++            newCachedFlag(USE_WEB_UI_NTP_ANDROID, false);
+     public static final CachedFlag sVirtualKeyboardResizesContentTransientOvershootFix =
+             newCachedFlag(VIRTUAL_KEYBOARD_RESIZES_CONTENT_TRANSIENT_OVERSHOOT_FIX, true);
+     public static final CachedFlag sVirtualKeyboardTransientInnerHeightFix =
+@@ -1486,7 +1489,8 @@ public abstract class ChromeFeatureList {
+                     /* defaultValue= */ false,
+                     /* defaultValueInTests= */ true);
+     public static final CachedFlag sWebUiAndroidTheming =
+-            newCachedFlag(WEB_UI_ANDROID_THEMING, BuildConfig.IS_DESKTOP_ANDROID);
++            // Zinc: keep the phone UI theming even though Zinc builds with is_desktop_android.
++            newCachedFlag(WEB_UI_ANDROID_THEMING, false);
+     // keep-sorted end
+ 
+     public static final List<CachedFlag> sFlagsCachedFullBrowser =

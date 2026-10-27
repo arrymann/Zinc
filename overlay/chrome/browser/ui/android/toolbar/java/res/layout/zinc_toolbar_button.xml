@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Zinc Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<!-- One customizable Zinc toolbar button. Sized and styled like the stock
+     phone toolbar buttons (home, tab switcher) so the bar looks native. -->
+<org.chromium.ui.widget.ChromeImageButton
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/ToolbarHoverableButton"
+    android:layout_gravity="top"
+    app:tint="@color/default_icon_color_tint_list" />
